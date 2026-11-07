@@ -2,4 +2,14 @@
 name = "api"
 version = "0.1.0"
 requires-python = ">=3.15"
-dependencies = ["fastapi[standard]>=0.162.0"]
+dependencies = [
+    "asgi-correlation-id>=5.0.1",
+    "fastapi[standard]>=0.162.0",
+]
+
+[dependency-groups]
+dev = ["pytest>=9.2.0"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]

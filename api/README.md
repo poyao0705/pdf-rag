@@ -12,6 +12,12 @@ uv run fastapi dev
 
 Visit http://localhost:8000
 
+### Run tests
+
+```bash
+uv run pytest
+```
+
 ### Deploy to FastAPI Cloud
 
 Sign up and log in at https://fastapicloud.com, then deploy with:
