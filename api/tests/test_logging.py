@@ -18,12 +18,12 @@ def run_logging() -> Callable[[str], str]:
                 "-B",
                 "-c",
                 "import logging\n"
-                "from core.logging import configure_logging\n"
-                + textwrap.dedent(code),
+                "from core.logging import configure_logging\n" + textwrap.dedent(code),
             ],
             cwd=Path(__file__).resolve().parents[1],
             capture_output=True,
             text=True,
+            check=False,
         )
         assert result.returncode == 0, result.stderr
         assert result.stderr == ""
