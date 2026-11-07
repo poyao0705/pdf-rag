@@ -3,13 +3,12 @@ import subprocess
 import sys
 import textwrap
 from collections.abc import Callable
-from pathlib import Path
 
 import pytest
 
 
 @pytest.fixture
-def run_logging() -> Callable[[str], str]:
+def run_logging(pytestconfig: pytest.Config) -> Callable[[str], str]:
     def run(code: str) -> str:
         # dictConfig changes global handlers; keep it isolated from other tests.
         result = subprocess.run(
@@ -20,7 +19,7 @@ def run_logging() -> Callable[[str], str]:
                 "import logging\n"
                 "from core.logging import configure_logging\n" + textwrap.dedent(code),
             ],
-            cwd=Path(__file__).resolve().parents[1],
+            cwd=pytestconfig.rootpath,
             capture_output=True,
             text=True,
             check=False,
