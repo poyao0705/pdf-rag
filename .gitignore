@@ -6,3 +6,5 @@ src/generated/
 *.tsbuildinfo
 next-env.d.ts
 .zed
+docs/superpowers
+superpowers
