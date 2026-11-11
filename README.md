@@ -2,20 +2,20 @@
 
 A text-only [assistant-ui](https://www.assistant-ui.com) chat whose model builds live dashboards about any npm package or GitHub repository. Each dashboard is an artifact: a card in the chat that opens it full size beside the conversation. It's stored in OpenUI Cloud and built from [`@openuidev/dashboard-library`](https://www.npmjs.com/package/@openuidev/dashboard-library), but its numbers load live every time it opens: downloads and releases from npm, stars and commit activity from GitHub, and known vulnerabilities from [OSV.dev](https://osv.dev) through an MCP server. Ask for a change and the same dashboard updates in place.
 
-It runs on Next.js, assistant-ui with the AI SDK on OpenUI Gateway's Chat Completions API, and `@openuidev/server`'s dashboards. The chat is your own agent, with threads kept in the browser's `localStorage`; OpenUI Cloud runs its model and builds, stores, and streams the dashboards.
+It runs on Next.js, assistant-ui, a TypeScript LangChain Deep Agent using OpenUI Gateway's Chat Completions API, and `@openuidev/server`'s dashboards. AI SDK remains only as the message/stream transport for assistant-ui, not the agent execution engine. Threads stay in the browser's `localStorage`; OpenUI Cloud builds, stores, and streams the dashboards. No separate LangGraph server is required.
 
 ## Run
 
-Requirements: Node.js 22.13+ and npm. This is a standalone example outside the package workspace.
+Requirements: Node.js 22.13+ and pnpm. This is a standalone example outside the package workspace.
 
 ```bash
-npm install
+pnpm install
 ```
 
 Mint a `THESYS_API_KEY` into `.env.local`, or create one in the [Thesys Console](https://console.thesys.dev/keys) and add it there yourself. The same key runs the chat and the dashboards:
 
 ```bash
-npm run generate:apiKey
+pnpm run generate:apiKey
 ```
 
 The default models are paid, so running the example uses [credits](https://www.openui.com/docs/gateway/pricing-credits). To run it without credits, use your own provider key with [BYOK](https://www.openui.com/docs/gateway/byok), or set `OPENUI_MODEL` and `OPENUI_DASHBOARD_MODEL` to one of the [free models](https://www.openui.com/cloud/gateway/models). Free models build lower-quality dashboards than `anthropic/claude-sonnet-5.5`.
@@ -25,13 +25,13 @@ Optional settings, also in `.env.local` (see `.env.example`):
 - `GITHUB_TOKEN` raises GitHub's rate limit from 60 to 5,000 requests an hour. Any token works; public repositories need no scopes. Without it, a few GitHub dashboards an hour are fine.
 - `OPENUI_MODEL` selects the chat model, as a Gateway `provider/model` identifier; the default is `anthropic/claude-sonnet-5.5`.
 - `OPENUI_DASHBOARD_MODEL` selects the model that builds dashboards; the default, and the recommended model, is `anthropic/claude-sonnet-5.5`.
-- `THESYS_BASE_URL` points the app at another OpenUI Cloud deployment, such as a local stack at `http://localhost:3102`; the default is `https://api.thesys.dev`. The browser then reaches it through this app's origin, so set it before `npm run dev` or `npm run build`.
+- `THESYS_BASE_URL` points the app at another OpenUI Cloud deployment, such as a local stack at `http://localhost:3102`; the default is `https://api.thesys.dev`. The browser then reaches it through this app's origin, so set it before `pnpm run dev` or `pnpm run build`.
 
 ```bash
-npm run dev
+pnpm run dev
 ```
 
-Open http://localhost:3000. To use another port, run `npm run dev -- --port 3001`.
+Open http://localhost:3000. To use another port, run `pnpm run dev --port 3001`.
 
 Try:
 
@@ -58,8 +58,8 @@ The OSV tools come from a real MCP server (`McpServer` from `@modelcontextprotoc
 ## How it works
 
 ```
-browser (assistant-ui)               /api/chat (AI SDK)                       OpenUI Cloud
-Thread ──messages──────────────────► streamText, tools from the toolkit
+browser (assistant-ui)               /api/chat (Deep Agents)                  OpenUI Cloud
+Thread ──messages──────────────────► toBaseMessages → createDeepAgent
                                      model calls create_dashboard ─execute──► dashboards.create()
                                      ◄─ result: a sentence + the dashboard's reference ─┘
 card (the tool's render) ◄─────────── streamed with the reply
@@ -67,8 +67,8 @@ card (the tool's render) ◄─────────── streamed with the 
                      Query() ─► /api/interpreter ─► data tools, MCP tools, generated scripts
 ```
 
-1. The chat sends the thread to `/api/chat`, which streams a reply from OpenUI Gateway with two tools, `create_dashboard` and `edit_dashboard`.
-2. The model calls `create_dashboard` with a title and a description of the dashboard. Its `execute` runs on this server and calls `dashboards.create()`, which starts generating in OpenUI Cloud and returns as soon as the dashboard has an id. The result, written by OpenUI Cloud, is a sentence for the model plus the dashboard's reference, and the model replies in a sentence or two.
+1. The chat sends the full thread to `/api/chat`, which validates it, converts it with `toBaseMessages`, and runs a request-scoped Deep Agent. Its two dashboard tools are `create_dashboard` and `edit_dashboard`; `toUIMessageStream` preserves the AI SDK streaming protocol expected by assistant-ui.
+2. The model calls `create_dashboard` with a title and a description of the dashboard. The LangChain tool runs on this server and calls `dashboards.create()`, which starts generating in OpenUI Cloud and returns as soon as the dashboard has an id. The result, written by OpenUI Cloud, is a sentence for the model plus the dashboard's reference, and the model replies in a sentence or two.
 3. assistant-ui renders the tool call with the toolkit's `render`: a card in the chat. When the result arrives, the card opens the dashboard beside the chat, and `LiveArtifactRenderer` streams it from OpenUI Cloud as it's generated.
 4. The dashboard loads its data with `Query()` calls. The renderer sends each one to `/api/interpreter`, where `dashboards.interpreter.execute()` runs the matching data tool or MCP tool on this server, or a script the dashboard was generated with, which calls the same tools.
 5. For a change, the model calls `edit_dashboard` with the id from the first tool result. The open dashboard stays on screen until the new version is ready, then every renderer showing it switches over.
@@ -82,13 +82,23 @@ The sidebar has two tabs:
 
 ## The toolkit
 
-`src/lib/toolkit.tsx` is an assistant-ui toolkit with the `"use generative"` directive: each tool has its `parameters`, a server-side `execute`, and a `render` in one place. `withAui()` in `next.config.ts` compiles it twice. The route's build (`new AISDKToolkit({ toolkit })`) keeps each tool's `parameters` and `execute`, so OpenUI Cloud and `THESYS_API_KEY` stay on the server; the browser's build (`Tools({ toolkit })`) keeps `parameters` and `render`. Both tools render standalone, so their card sits in the message rather than in the tool-call group.
+`src/lib/toolkit.tsx` is a client-only assistant-ui registry for rendering backend tool calls. Both tools render standalone, so their card sits in the message rather than in the tool-call group. It has no executors or server imports; the installed backend-tool contract keeps schemas and descriptions on the server. `src/lib/dashboard-tool-contracts.ts` owns those Zod schemas and descriptions, and `src/lib/chat-agent.ts` wraps the existing OpenUI methods as LangChain tools. The generative compiler and `AISDKToolkit` are no longer used.
+
+## The Deep Agent
+
+`src/lib/chat-agent.ts` creates a fresh `createDeepAgent` with `ChatOpenAI`, the existing plain-text `chatPrompt`, and the dashboard tools for each request. The model still uses `OPENUI_MODEL`, `THESYS_BASE_URL`, and the server's existing `THESYS_API_KEY`. Dashboard generation remains independent and still uses `OPENUI_DASHBOARD_MODEL`.
+
+Deep Agents includes bundled planning, filesystem, summarization and general-purpose-subagent features. Its default filesystem is an in-memory StateBackend, not this application's host filesystem or a shell/sandbox. No custom subagents, skills, checkpointer, or persistent agent store are configured. Scratch files and other agent state are ephemeral; only the conversation carried by the existing browser history survives between requests.
+
+Runs are bounded to 24 graph steps (not 24 model turns). Request cancellation reaches the graph and dashboard SDK calls; failed dashboard operations return sanitized per-tool errors. There is no automatic whole-run/mutation replay, and cancellation cannot undo a dashboard already created in OpenUI Cloud.
+
+The route uses the official adapter's `values`/`messages` stream modes. With the installed versions, additionally enabling `tools` emits serialized duplicate tool results, so it is intentionally omitted. Next.js loads `deepagents` as a server external to preserve Node's handling of optional integrations without bundling unused optional WebSocket dependencies.
 
 The chat is assistant-ui's `Thread` and `ThreadList` from its shadcn registry, in `src/components/assistant-ui/`, trimmed for a text-only chat: no attachments, files, images, or thread search.
 
 ## The component library
 
-`src/library.ts` exports `library` from `@openuidev/dashboard-library`: 46 dashboard components, from the `Dashboard` root, sections, card rows and filters to metrics, charts and tables. `npm run generate` writes its specification to `src/generated/spec.json`, which the server builds dashboards from, so it never loads React components; the browser renders dashboards with the library itself. `src/lib/openui.ts` passes the library's examples and rules to the model that builds them, with this app's own preamble.
+`src/library.ts` exports `library` from `@openuidev/dashboard-library`: 46 dashboard components, from the `Dashboard` root, sections, card rows and filters to metrics, charts and tables. `pnpm run generate` writes its specification to `src/generated/spec.json`, which the server builds dashboards from, so it never loads React components; the browser renders dashboards with the library itself. `src/lib/openui.ts` passes the library's examples and rules to the model that builds them, with this app's own preamble.
 
 ## The server
 
@@ -100,10 +110,12 @@ The chat is assistant-ui's `Thread` and `ThreadList` from its shadcn registry, i
 | ------------------------------------- | --------------------------------------------------------------------- |
 | `src/lib/data/`                       | npm, GitHub, and OSV.dev data tools, with timeouts and caching        |
 | `src/lib/openui.ts`                   | `OpenUIClient`, the dashboard definition, the base URL and local user |
-| `src/lib/toolkit.tsx`                 | `create_dashboard` and `edit_dashboard`: schema, `execute`, `render`  |
+| `src/lib/toolkit.tsx`                 | Browser-only backend-tool card registrations                        |
+| `src/lib/dashboard-tool-contracts.ts` | Dashboard tool schemas and descriptions                              |
+| `src/lib/chat-agent.ts`               | Request-scoped Deep Agent, Gateway model, and dashboard tool execution |
 | `src/lib/prompt.ts`                   | Chat instructions and the data dashboards can show                    |
-| `src/library.ts`                      | The kit's library, for `npm run generate`                             |
-| `src/app/api/chat/route.ts`           | `streamText` on OpenUI Gateway with the toolkit's tools               |
+| `src/library.ts`                      | The kit's library, for `pnpm run generate`                            |
+| `src/app/api/chat/route.ts`           | Validates history and streams the Deep Agent through the AI SDK adapter |
 | `src/app/api/interpreter/route.ts`    | Runs dashboards' `Query()` calls with `dashboards.interpreter`        |
 | `src/app/api/frontend-token/route.ts` | The user's frontend token for OpenUI Cloud                            |
 | `src/components/app.tsx`              | Runtime, providers, and the chat and panel layout                     |
@@ -112,7 +124,7 @@ The chat is assistant-ui's `Thread` and `ThreadList` from its shadcn registry, i
 | `src/components/assistant-ui/`        | assistant-ui's `Thread` and `ThreadList`, from its registry           |
 | `src/components/dashboard.tsx`        | The dashboard card and the panel with `LiveArtifactRenderer`          |
 
-`npm run generate` creates the ignored component specification before dev/build/verify.
+`pnpm run generate` creates the ignored component specification before dev/build/verify.
 
 ## Deploying
 
@@ -123,5 +135,8 @@ OpenUI Cloud stores each dashboard's definition, not its data: numbers reach the
 ## Verify
 
 ```bash
-npm run verify
+pnpm test
+pnpm run verify
 ```
+
+Tests run offline, including a real Deep Agent with a deterministic test model and mocked OpenUI calls. They cover stream compatibility, persisted tool history, ownership, cancellation, safe errors and rendering. The production build also checks TypeScript. Live create/edit/reopen checks require configured credentials and can use model credits; they are not part of the offline suite.
