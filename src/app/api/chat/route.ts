@@ -37,14 +37,21 @@ export async function POST(request: Request): Promise<Response> {
           writer.merge(toUIMessageStream(stream).pipeThrough(new TransformStream<UIMessageChunk, UIMessageChunk>({
             transform(chunk, controller) {
               // The adapter emits error chunks itself; the outer onError only catches rejections.
+              if (chunk.type === "error" && !request.signal.aborted) {
+                console.error("chat agent stream failed", chunk.errorText);
+              }
               controller.enqueue(chunk.type === "error" ? { ...chunk, errorText: chatError } : chunk);
             },
           })));
         },
-        onError: () => chatError,
+        onError: (error) => {
+          if (!request.signal.aborted) console.error("chat ui stream failed", error);
+          return chatError;
+        },
       }),
     });
-  } catch {
+  } catch (error) {
+    if (!request.signal.aborted) console.error("chat route failed", error);
     return Response.json({ error: chatError }, { status: 500 });
   }
 }

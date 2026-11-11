@@ -25,13 +25,14 @@ function request(body: unknown = { messages }, signal?: AbortSignal) {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  vi.spyOn(console, "error").mockImplementation(() => {});
   // This non-credential sentinel is only a configuration-presence fixture; all execution is offline.
   vi.stubEnv("THESYS_API_KEY", "offline-test-sentinel");
   vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new Error("Unexpected test network call")));
   agent.create.mockReturnValue({ stream: agent.stream });
   agent.stream.mockImplementation(() => createRunFixture());
 });
-afterEach(() => { vi.unstubAllEnvs(); vi.unstubAllGlobals(); });
+afterEach(() => { vi.unstubAllEnvs(); vi.unstubAllGlobals(); vi.restoreAllMocks(); });
 
 describe("Deep Agents chat route", () => {
   it("preserves the UI SSE contract and uses the server owner and bounded request signal", async () => {
@@ -89,25 +90,42 @@ describe("Deep Agents chat route", () => {
     expect(chunks.some((chunk) => chunk.type === "tool-output-available")).toBe(false);
   });
 
-  it("sanitizes an agent setup failure", async () => {
-    agent.create.mockImplementation(() => { throw new Error("Private setup diagnostics"); });
+  it("logs and sanitizes an agent setup failure", async () => {
+    const error = new Error("Private setup diagnostics");
+    agent.create.mockImplementation(() => { throw error; });
     const response = await POST(request());
     expect(response.status).toBe(500);
     expect(await response.json()).toEqual({ error: "Chat request failed." });
+    expect(console.error).toHaveBeenCalledExactlyOnceWith(expect.any(String), error);
   });
 
-  it("sanitizes failures while starting the graph stream", async () => {
-    agent.stream.mockRejectedValue(new Error("Private provider diagnostics"));
+  it("logs and sanitizes failures while starting the graph stream", async () => {
+    const error = new Error("Private provider diagnostics");
+    agent.stream.mockRejectedValue(error);
     const chunks = await readUIChunks(await POST(request()));
     expect(chunks).toContainEqual({ type: "error", errorText: "Chat request failed." });
     expect(JSON.stringify(chunks)).not.toContain("Private");
+    expect(console.error).toHaveBeenCalledExactlyOnceWith(expect.any(String), error);
   });
 
-  it("sanitizes error chunks emitted by the official adapter", async () => {
-    agent.stream.mockImplementation(() => new ReadableStream({ start(controller) { controller.error(new Error("Private provider diagnostics")); } }));
+  it("logs and sanitizes error chunks emitted by the official adapter", async () => {
+    const error = new Error("Private provider diagnostics");
+    agent.stream.mockImplementation(() => new ReadableStream({ start(controller) { controller.error(error); } }));
     const chunks = await readUIChunks(await POST(request()));
     expect(chunks).toContainEqual({ type: "error", errorText: "Chat request failed." });
     expect(JSON.stringify(chunks)).not.toContain("Private");
+    expect(console.error).toHaveBeenCalledExactlyOnceWith(expect.any(String), error.message);
+  });
+
+  it.each(["setup", "stream"])("does not log cancelled requests during %s", async (phase) => {
+    const controller = new AbortController();
+    agent[phase === "setup" ? "create" : "stream"].mockImplementation(() => {
+      controller.abort();
+      throw controller.signal.reason;
+    });
+    const response = await POST(request(undefined, controller.signal));
+    await response.text();
+    expect(console.error).not.toHaveBeenCalled();
   });
 
   it("propagates cancellation without restarting the graph", async () => {
@@ -123,5 +141,6 @@ describe("Deep Agents chat route", () => {
     expect(req.signal.aborted).toBe(true);
     expect(agent.stream).toHaveBeenCalledTimes(1);
     expect(agent.stream.mock.calls[0][1].signal).toBe(req.signal);
+    expect(console.error).not.toHaveBeenCalled();
   });
 });
