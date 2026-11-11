@@ -1,0 +1,23 @@
+services:
+  paradedb:
+    image: paradedb/paradedb:latest
+    container_name: paradedb
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=dev_password
+      - POSTGRES_DB=paradedb
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - paradedb_data:/var/lib/postgresql/
+      - ./infra/db/init:/docker-entrypoint-initdb.d:ro
+    restart: unless-stopped
+
+  adminer:
+    image: adminer
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8080:8080"
+
+volumes:
+  paradedb_data:
