@@ -1,6 +1,6 @@
 import "dotenv/config";
 import { defineConfig } from "drizzle-kit";
-import { env } from "./src/env";
+import { z } from "zod";
 
 export default defineConfig({
   dialect: "postgresql",
@@ -8,6 +8,6 @@ export default defineConfig({
   schemaFilter: ["public"],
   out: "./drizzle",
   dbCredentials: {
-    url: env.DATABASE_URL!,
+    url: z.url().parse(process.env.DATABASE_URL),
   },
 });
