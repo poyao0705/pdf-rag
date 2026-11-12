@@ -74,7 +74,6 @@ async function fetchAndIngest(paths: string[] = DOC_PATHS) {
     metadata: chunk.metadata,
   }));
 
-  //
   const sources = [
     ...new Set(
       rows.map((row) => {

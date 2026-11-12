@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createArgs, createRunFixture, failedRunFixture, readUIChunks, reference } from "./helpers/chat-stream-fixtures";
 
 const agent = vi.hoisted(() => ({ create: vi.fn(), stream: vi.fn() }));
-vi.mock("@/lib/chat-agent", () => ({ createDashboardAgent: agent.create }));
+vi.mock("@/agent/chat-agent", () => ({ createDashboardAgent: agent.create }));
 vi.mock("@/lib/openui", () => ({ userId: () => "server-owner", baseUrl: "https://gateway.example" }));
 // Keep the transport real, but make an accidental legacy execution fail before any network call.
 vi.mock("ai", async (original) => ({

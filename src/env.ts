@@ -4,6 +4,9 @@ import { z } from "zod";
 export const env = createEnv({
   server: {
     DATABASE_URL: z.url(),
+    POSTGRES_USER: z.string().min(1),
+    POSTGRES_PASSWORD: z.string().min(1),
+    POSTGRES_DATABASE: z.string().min(1),
     THESYS_API_KEY: z.string().min(1),
     THESYS_BASE_URL: z.url().default("https://api.thesys.dev"),
     OPENUI_MODEL: z.string().min(1).default("anthropic/claude-sonnet-5.5"),
