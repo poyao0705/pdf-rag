@@ -5,7 +5,6 @@ export const documents = pgTable(
   "documents",
   {
     id: serial("id").primaryKey(),
-    source: text("source").notNull().unique(),
     content: text("content").notNull(),
     metadata: jsonb("metadata").$type<Record<string, unknown>>().notNull(),
   },
