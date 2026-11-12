@@ -8,7 +8,10 @@ export const documents = pgTable(
     id: serial("id").primaryKey(),
     vector: vector("vector", { dimensions: 1536 }).notNull(),
     content: text("content").notNull(),
-    content_hash: text("content_hash"),
+    // Will be preventing duplicate content from being inserted
+    content_hash: text("content_hash")
+      .notNull()
+      .generatedAlwaysAs(sql`encode(digest("content", 'sha256'), 'hex')`),
     metadata: jsonb("metadata").$type<Record<string, unknown>>().notNull(),
   },
   (table) => [
