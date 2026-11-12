@@ -1,9 +1,9 @@
 import "dotenv/config";
 import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
-import { env } from "../env";
+import { z } from "zod";
 
-const databaseUrl = env.DATABASE_URL;
+const databaseUrl = z.url().parse(process.env.DATABASE_URL);
 
 if (!databaseUrl) {
   throw new Error("DATABASE_URL is required");
