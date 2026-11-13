@@ -4,7 +4,14 @@ import { z } from "zod";
 export const dashboardToolContracts = {
   create_dashboard: {
     description:
-      "Create a live dashboard. It loads its numbers live from npm, GitHub, and OSV.dev every time it is opened, so name the packages or repositories and describe which data to show and how, without numbers. Returns right away while the dashboard is generated.",
+      "Create and save a snapshot dashboard based on the conversation. " +
+      "Provide a descriptive title and a self-contained prompt containing " +
+      "the relevant facts, numbers, decisions, labels, and requested layout. " +
+      "The dashboard generator cannot access chat history, so include the " +
+      "actual information rather than referring to earlier messages. " +
+      "Use only information supplied by the user or supported by retrieved " +
+      "sources; do not invent missing data. " +
+      "Returns before dashboard generation finishes.",
     parameters: z.object({
       title: z.string().min(1).describe('A short title, such as "October sales".'),
       prompt: z
