@@ -14,6 +14,7 @@ These initial records were reconstructed from commit history and a conversation 
 6. [Use LangChain documentation as a temporary integration demo](decisions/0006-use-langchain-docs-as-a-temporary-demo.md)
 7. [Start with text-embedding-3-small as a provisional baseline](decisions/0007-start-with-text-embedding-3-small.md)
 8. [Use NVIDIA-inspired character-based chunking](decisions/0008-use-nvidia-inspired-character-chunking.md)
+9. [Use self-hosted Docling Serve for uploaded PDF extraction](decisions/0009-use-docling-serve-for-pdf-extraction.md)
 
 ## Conventions
 
